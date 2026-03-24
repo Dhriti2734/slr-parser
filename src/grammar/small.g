@@ -1,0 +1,4 @@
+E -> E + T
+E -> T
+T -> id
+T -> num
