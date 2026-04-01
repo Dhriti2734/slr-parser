@@ -2,120 +2,117 @@
 #include <iostream>
 #include <iomanip>
 
-bool Parser::parse(std::vector<std::string> tokens) {
+bool Parser::parse(const std::vector<Token>& tokensInput) {
 
-    // Add end of input marker
+    std::vector<std::string> tokens;
+
+    // ✅ NO HARDCODING: directly use token values
+    for (auto& tok : tokensInput) {
+        if (tok.type == TokenType::END_OF_FILE) break;
+        tokens.push_back(tok.value);
+    }
+
     tokens.push_back("$");
 
-    // Stack stores state numbers
     std::stack<int> stateStack;
-    // Symbol stack stores symbols
     std::stack<std::string> symbolStack;
 
-    // Start state is 0
     stateStack.push(0);
     symbolStack.push("$");
 
-    int inputPos = 0; // current position in token list
+    int pos = 0;
 
-    std::cout << "\n=============================\n";
-    std::cout << "   PARSE TRACE\n";
-    std::cout << "=============================\n";
+    std::cout << "\n=============================================\n";
+    std::cout << "                PARSE TRACE\n";
+    std::cout << "=============================================\n";
+
     std::cout << std::left
-              << std::setw(30) << "STACK"
-              << std::setw(30) << "INPUT"
+              << std::setw(25) << "STACK"
+              << std::setw(25) << "INPUT"
               << std::setw(20) << "ACTION"
               << "\n";
-    std::cout << std::string(80, '-') << "\n";
+
+    std::cout << "-------------------------------------------------------------\n";
 
     while (true) {
 
-        int currentState = stateStack.top();
-        std::string currentToken = tokens[inputPos];
+        int state = stateStack.top();
+        std::string token = tokens[pos];
 
-        // Print current stack
-        std::stack<std::string> tempSym = symbolStack;
-        std::vector<std::string> symVec;
-        while (!tempSym.empty()) {
-            symVec.push_back(tempSym.top());
-            tempSym.pop();
+        // STACK PRINT
+        std::stack<std::string> temp = symbolStack;
+        std::vector<std::string> st;
+
+        while (!temp.empty()) {
+            st.push_back(temp.top());
+            temp.pop();
         }
+
         std::string stackStr = "";
-        for (int i = symVec.size() - 1; i >= 0; i--)
-            stackStr += symVec[i] + " ";
+        for (int i = st.size() - 1; i >= 0; i--) {
+            stackStr += st[i] + " ";
+        }
 
-        // Print remaining input
+        // INPUT PRINT
         std::string inputStr = "";
-        for (int i = inputPos; i < (int)tokens.size(); i++)
+        for (int i = pos; i < tokens.size(); i++) {
             inputStr += tokens[i] + " ";
+        }
 
-        // Look up action
-        if (table.actionTable[currentState].find(currentToken) ==
-            table.actionTable[currentState].end()) {
-            // No action found = ERROR
-            std::cout << std::left
-                      << std::setw(30) << stackStr
-                      << std::setw(30) << inputStr
-                      << std::setw(20) << "ERROR"
-                      << "\n";
-            std::cout << "\n REJECTED Unexpected token: "
-                      << currentToken << "\n";
+        // ERROR
+        if (!table.actionTable[state].count(token)) {
+            std::cout << std::setw(25) << stackStr
+                      << std::setw(25) << inputStr
+                      << "ERROR\n";
+
+            std::cout << "\n REJECTED: Invalid input\n";
             return false;
         }
 
-        Action action = table.actionTable[currentState][currentToken];
+        Action action = table.actionTable[state][token];
 
+        // SHIFT
         if (action.type == "shift") {
-            std::cout << std::left
-                      << std::setw(30) << stackStr
-                      << std::setw(30) << inputStr
+            std::cout << std::setw(25) << stackStr
+                      << std::setw(25) << inputStr
                       << "SHIFT " + std::to_string(action.value)
                       << "\n";
 
-            // Push token and new state
-            symbolStack.push(currentToken);
+            symbolStack.push(token);
             stateStack.push(action.value);
-            inputPos++; // move to next token
+            pos++;
+        }
 
-        } else if (action.type == "reduce") {
+        // REDUCE
+        else if (action.type == "reduce") {
+
             Production& rule = table.grammar.rules[action.value];
 
-            std::string actionStr = "REDUCE by " +
-                                    rule.lhs + " -> ";
-            for (int i = 0; i < (int)rule.rhs.size(); i++)
-                actionStr += rule.rhs[i] + " ";
+            std::string actionStr = "REDUCE " + rule.lhs + " -> ";
+            for (auto& s : rule.rhs) actionStr += s + " ";
 
-            std::cout << std::left
-                      << std::setw(30) << stackStr
-                      << std::setw(30) << inputStr
+            std::cout << std::setw(25) << stackStr
+                      << std::setw(25) << inputStr
                       << actionStr << "\n";
 
-            // Pop rhs.size() symbols from both stacks
-            for (int i = 0; i < (int)rule.rhs.size(); i++) {
+            for (int i = 0; i < rule.rhs.size(); i++) {
                 stateStack.pop();
                 symbolStack.pop();
             }
 
-            // Push lhs onto symbol stack
             symbolStack.push(rule.lhs);
 
-            // Get goto state
-            int topState = stateStack.top();
-            if (table.gotoTable[topState].find(rule.lhs) ==
-                table.gotoTable[topState].end()) {
-                std::cout << "\n REJECTED GOTO error\n";
-                return false;
-            }
+            int next = table.gotoTable[stateStack.top()][rule.lhs];
+            stateStack.push(next);
+        }
 
-            int gotoState = table.gotoTable[topState][rule.lhs];
-            stateStack.push(gotoState);
+        // ACCEPT
+        else if (action.type == "accept") {
+            std::cout << std::setw(25) << stackStr
+                      << std::setw(25) << inputStr
+                      << "ACCEPT\n";
 
-        } else if (action.type == "accept") {
-            std::cout << std::left
-                      << std::setw(30) << stackStr
-                      << std::setw(30) << inputStr
-                      << "ACCEPT" << "\n";
-            std::cout << "\n ACCEPTED Input is valid!\n";
+            std::cout << "\n ACCEPTED: Input is valid\n";
             return true;
         }
     }

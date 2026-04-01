@@ -13,9 +13,6 @@ public:
     Parser(SLRTable& t) : table(t) {}
 
     // Main function - give it tokens, it parses
-    bool parse(std::vector<std::string> tokens);
+    bool parse(const std::vector<Token>& tokens);
 
-private:
-    // convert token to grammar terminal string
-    std::string tokenToTerminal(const std::string& token);
 };

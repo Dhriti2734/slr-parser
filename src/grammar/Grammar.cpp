@@ -102,6 +102,16 @@ void Grammar::loadFromFile(const std::string& filename) {
             }
         }
     }
+    // Add augmented grammar: S' -> S
+Production augmented;
+augmented.lhs = startSymbol + "'";
+augmented.rhs.push_back(startSymbol);
+
+// insert at beginning
+rules.insert(rules.begin(), augmented);
+
+// update start symbol
+startSymbol = augmented.lhs;
 }
 
 void Grammar::printRules() {

@@ -1,40 +1,31 @@
 #include "SLRTable.h"
 #include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <set>
 
 // =============================================
-// HELPER: get symbol after dot
-// Expr -> Expr • + Term  →  "+"
+// BASIC HELPERS
 // =============================================
+
 std::string SLRTable::symbolAfterDot(const Item& item) {
-    Production& rule = grammar.rules[item.ruleIndex];
-    if (item.dotPos < (int)rule.rhs.size()) {
+    auto& rule = grammar.rules[item.ruleIndex];
+    if (item.dotPos < rule.rhs.size())
         return rule.rhs[item.dotPos];
-    }
-    return ""; // dot is at end
+    return "";
 }
-
-// HELPER: is dot at end?
-// Expr -> Expr + Term •  →  true
 
 bool SLRTable::isDotAtEnd(const Item& item) {
-    Production& rule = grammar.rules[item.ruleIndex];
-    return item.dotPos >= (int)rule.rhs.size();
+    return item.dotPos >= grammar.rules[item.ruleIndex].rhs.size();
 }
 
-// HELPER: find state index
 int SLRTable::findState(const State& s) {
-    for (int i = 0; i < (int)states.size(); i++) {
+    for (int i = 0; i < states.size(); i++) {
         if (states[i] == s) return i;
     }
     return -1;
 }
 
-// STEP 1: CLOSURE
-// Keep adding items until nothing new
+// =============================================
+// CLOSURE
+// =============================================
 
 State SLRTable::closure(const State& items) {
     State result = items;
@@ -42,244 +33,187 @@ State SLRTable::closure(const State& items) {
 
     while (changed) {
         changed = false;
-        State toAdd;
 
-        for (std::set<Item>::iterator it = result.begin();
-             it != result.end(); it++) {
+        for (auto it : result) {
+            std::string sym = symbolAfterDot(it);
 
-            std::string sym = symbolAfterDot(*it);
-            if (sym.empty()) continue;
+            if (!grammar.nonTerminals.count(sym)) continue;
 
-            // sym must be a nonTerminal
-            if (grammar.nonTerminals.find(sym) == grammar.nonTerminals.end())
-                continue;
-
-            // Add all rules for sym with dot at start
-            for (int i = 0; i < (int)grammar.rules.size(); i++) {
+            for (int i = 0; i < grammar.rules.size(); i++) {
                 if (grammar.rules[i].lhs == sym) {
-                    Item newItem;
-                    newItem.ruleIndex = i;
-                    newItem.dotPos    = 0;
+                    Item newItem{i, 0};
 
-                    if (result.find(newItem) == result.end()) {
-                        toAdd.insert(newItem);
+                    if (!result.count(newItem)) {
+                        result.insert(newItem);
                         changed = true;
                     }
                 }
             }
         }
-
-        // add new items to result
-        for (std::set<Item>::iterator it = toAdd.begin();
-             it != toAdd.end(); it++) {
-            result.insert(*it);
-        }
     }
-
     return result;
 }
 
-// STEP 2: GOTO
-// Move dot past symbol and compute closure
+// =============================================
+// GOTO
+// =============================================
 
 State SLRTable::goTo(const State& items, const std::string& symbol) {
     State moved;
 
-    for (std::set<Item>::iterator it = items.begin();
-         it != items.end(); it++) {
-
-        std::string sym = symbolAfterDot(*it);
-
-        if (sym == symbol) {
-            // move dot one step forward
-            Item newItem;
-            newItem.ruleIndex = it->ruleIndex;
-            newItem.dotPos    = it->dotPos + 1;
-            moved.insert(newItem);
+    for (auto it : items) {
+        if (symbolAfterDot(it) == symbol) {
+            moved.insert({it.ruleIndex, it.dotPos + 1});
         }
     }
 
-    if (moved.empty()) return State();
-
-    return closure(moved);
+    return moved.empty() ? State() : closure(moved);
 }
 
-
-// STEP 3: BUILD ALL STATES
+// =============================================
+// BUILD STATES
+// =============================================
 
 void SLRTable::buildStates() {
-    // Start with augmented rule: Program' -> • Program
-    // We treat rule 0 as the start rule
-    Item startItem;
-    startItem.ruleIndex = 0;
-    startItem.dotPos    = 0;
+    State start;
+    start.insert({0, 0});
+    start = closure(start);
 
-    State startState;
-    startState.insert(startItem);
-    startState = closure(startState);
+    states.push_back(start);
 
-    states.push_back(startState);
+    for (int i = 0; i < states.size(); i++) {
+        std::set<std::string> symbols;
 
-    bool changed = true;
-    while (changed) {
-        changed = false;
+        for (auto it : states[i]) {
+            std::string sym = symbolAfterDot(it);
+            if (!sym.empty()) symbols.insert(sym);
+        }
 
-        for (int i = 0; i < (int)states.size(); i++) {
+        for (auto sym : symbols) {
+            State next = goTo(states[i], sym);
 
-            // collect all symbols after dots in this state
-            std::set<std::string> symbols;
-            for (std::set<Item>::iterator it = states[i].begin();
-                 it != states[i].end(); it++) {
-                std::string sym = symbolAfterDot(*it);
-                if (!sym.empty()) symbols.insert(sym);
+            if (next.empty()) continue;
+
+            int idx = findState(next);
+
+            if (idx == -1) {
+                states.push_back(next);
+                idx = states.size() - 1;
             }
 
-            // for each symbol compute goto
-            for (std::set<std::string>::iterator s = symbols.begin();
-                 s != symbols.end(); s++) {
-
-                State next = goTo(states[i], *s);
-                if (next.empty()) continue;
-
-                int nextIndex = findState(next);
-                if (nextIndex == -1) {
-                    // new state found!
-                    states.push_back(next);
-                    nextIndex = states.size() - 1;
-                    changed = true;
-                }
-
-                // record in goto table
-                gotoTable[i][*s] = nextIndex;
-            }
+            gotoTable[i][sym] = idx;
         }
     }
 }
 
-
-// STEP 4: FILL ACTION AND GOTO TABLES
+// =============================================
+// FILL TABLES
+// =============================================
 
 void SLRTable::fillTables() {
-    for (int i = 0; i < (int)states.size(); i++) {
+    for (int i = 0; i < states.size(); i++) {
 
-        for (std::set<Item>::iterator it = states[i].begin();
-             it != states[i].end(); it++) {
+        for (auto it : states[i]) {
 
-            std::string sym = symbolAfterDot(*it);
+            std::string sym = symbolAfterDot(it);
 
-            // CASE 1: dot before a terminal → SHIFT
-            if (!sym.empty() &&
-                grammar.terminals.find(sym) != grammar.terminals.end()) {
-
-                if (gotoTable[i].find(sym) != gotoTable[i].end()) {
-                    int nextState = gotoTable[i][sym];
-                    actionTable[i][sym] = Action("shift", nextState);
-                }
+            // SHIFT
+            if (!sym.empty() && grammar.terminals.count(sym)) {
+                int next = gotoTable[i][sym];
+                actionTable[i][sym] = Action("shift", next);
             }
 
-            // CASE 2: dot at end → REDUCE
-            else if (isDotAtEnd(*it)) {
-                std::string lhs = grammar.rules[it->ruleIndex].lhs;
+            // REDUCE / ACCEPT
+            else if (isDotAtEnd(it)) {
 
-                // ACCEPT if it's the start rule
-                if (it->ruleIndex == 0 &&
-                    grammar.followSets[lhs].find("$") !=
-                    grammar.followSets[lhs].end()) {
+                std::string lhs = grammar.rules[it.ruleIndex].lhs;
+
+                // ACCEPT
+                if (it.ruleIndex == 0) {
                     actionTable[i]["$"] = Action("accept", 0);
                 }
 
-                // REDUCE for every token in FOLLOW(lhs)
-                std::set<std::string> follow = grammar.followSets[lhs];
-                for (std::set<std::string>::iterator f = follow.begin();
-                     f != follow.end(); f++) {
-                    if (*f == "$" && it->ruleIndex == 0) continue;
-                    // only set if not already set (avoid conflicts)
-                    if (actionTable[i].find(*f) == actionTable[i].end()) {
-                        actionTable[i][*f] = Action("reduce", it->ruleIndex);
+                // REDUCE
+                else {
+                    std::set<std::string> follow = grammar.followSets[lhs];
+
+                    for (auto f : follow) {
+                        if (actionTable[i].count(f)) {
+                            std::cout << "Conflict at state " << i << " symbol " << f << "\n";
+                        }
+                        actionTable[i][f] = Action("reduce", it.ruleIndex);
                     }
                 }
             }
-
-            // CASE 3: dot before nonTerminal → already in gotoTable
         }
     }
 }
 
 // =============================================
-// BUILD: call all steps
+// BUILD
 // =============================================
+
 void SLRTable::build() {
     buildStates();
     fillTables();
 }
 
-void SLRTable::printStates() {
-    std::cout << "\n=============================\n";
-    std::cout << "   LR(0) STATES\n";
-    std::cout << "=============================\n";
+// =============================================
+// PRINT FUNCTIONS (OUTSIDE BUILD ✅)
+// =============================================
 
-    for (int i = 0; i < (int)states.size(); i++) {
+void SLRTable::printStates() {
+    std::cout << "\n=========== LR(0) STATES ===========\n";
+
+    for (int i = 0; i < states.size(); i++) {
         std::cout << "\nState " << i << ":\n";
 
-        for (std::set<Item>::iterator it = states[i].begin();
-             it != states[i].end(); it++) {
+        for (auto item : states[i]) {
+            auto& rule = grammar.rules[item.ruleIndex];
 
-            Production& rule = grammar.rules[it->ruleIndex];
             std::cout << "  " << rule.lhs << " -> ";
 
-            for (int j = 0; j < (int)rule.rhs.size(); j++) {
-                if (j == it->dotPos) std::cout << "[.] ";
+            for (int j = 0; j < rule.rhs.size(); j++) {
+                if (j == item.dotPos) std::cout << ". ";
                 std::cout << rule.rhs[j] << " ";
             }
-            if (it->dotPos == (int)rule.rhs.size()) std::cout << "[.]";
+
+            if (item.dotPos == rule.rhs.size()) std::cout << ".";
             std::cout << "\n";
         }
     }
 }
-// =============================================
-// PRINT ACTION TABLE
-// =============================================
+
 void SLRTable::printActionTable() {
-    std::cout << "\n=============================\n";
-    std::cout << "   ACTION TABLE\n";
-    std::cout << "=============================\n";
+    std::cout << "\n=========== ACTION TABLE ===========\n";
 
-    std::map<int, std::map<std::string, Action> >::iterator it;
-    for (it = actionTable.begin(); it != actionTable.end(); it++) {
-        std::cout << "State " << it->first << ":\n";
+    for (auto& row : actionTable) {
+        std::cout << "State " << row.first << ":\n";
 
-        std::map<std::string, Action>::iterator at;
-        for (at = it->second.begin(); at != it->second.end(); at++) {
-            std::cout << "  [" << at->first << "] = ";
-            if (at->second.type == "shift")
-                std::cout << "SHIFT " << at->second.value;
-            else if (at->second.type == "reduce")
-                std::cout << "REDUCE by rule " << at->second.value
-                          << " (" << grammar.rules[at->second.value].lhs
-                          << " -> ";
-            else if (at->second.type == "accept")
+        for (auto& col : row.second) {
+            std::cout << "  [" << col.first << "] = ";
+
+            if (col.second.type == "shift")
+                std::cout << "SHIFT " << col.second.value;
+            else if (col.second.type == "reduce")
+                std::cout << "REDUCE by rule " << col.second.value;
+            else if (col.second.type == "accept")
                 std::cout << "ACCEPT";
+
             std::cout << "\n";
         }
     }
 }
 
-// =============================================
-// PRINT GOTO TABLE
-// =============================================
 void SLRTable::printGotoTable() {
-    std::cout << "\n=============================\n";
-    std::cout << "   GOTO TABLE\n";
-    std::cout << "=============================\n";
+    std::cout << "\n=========== GOTO TABLE ===========\n";
 
-    std::map<int, std::map<std::string, int> >::iterator it;
-    for (it = gotoTable.begin(); it != gotoTable.end(); it++) {
-        std::cout << "State " << it->first << ":\n";
+    for (auto& row : gotoTable) {
+        std::cout << "State " << row.first << ":\n";
 
-        std::map<std::string, int>::iterator gt;
-        for (gt = it->second.begin(); gt != it->second.end(); gt++) {
-            std::cout << "  [" << gt->first << "] -> State "
-                      << gt->second << "\n";
+        for (auto& col : row.second) {
+            std::cout << "  [" << col.first << "] -> State "
+                      << col.second << "\n";
         }
     }
 }
