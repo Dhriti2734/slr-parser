@@ -58,7 +58,7 @@ bool Parser::parse(std::vector<std::string> tokens) {
                       << std::setw(30) << inputStr
                       << std::setw(20) << "ERROR"
                       << "\n";
-            std::cout << "\n❌ REJECTED — Unexpected token: "
+            std::cout << "\n REJECTED Unexpected token: "
                       << currentToken << "\n";
             return false;
         }
@@ -103,7 +103,7 @@ bool Parser::parse(std::vector<std::string> tokens) {
             int topState = stateStack.top();
             if (table.gotoTable[topState].find(rule.lhs) ==
                 table.gotoTable[topState].end()) {
-                std::cout << "\n REJECTED — GOTO error\n";
+                std::cout << "\n REJECTED GOTO error\n";
                 return false;
             }
 
