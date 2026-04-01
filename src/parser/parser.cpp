@@ -1,6 +1,7 @@
 #include "Parser.h"
 #include <iostream>
 #include <iomanip>
+#include "../lexer/TokenMapper.h"
 
 bool Parser::parse(const std::vector<Token>& tokensInput) {
 
@@ -9,7 +10,7 @@ bool Parser::parse(const std::vector<Token>& tokensInput) {
     // ✅ NO HARDCODING: directly use token values
     for (auto& tok : tokensInput) {
         if (tok.type == TokenType::END_OF_FILE) break;
-        tokens.push_back(tok.value);
+        tokens.push_back(mapToken(tok));
     }
 
     tokens.push_back("$");
