@@ -4,7 +4,6 @@
 #include <iostream>
 
 // Helper: split a string by spaces
-// "Expr + Term" → ["Expr", "+", "Term"]
 std::vector<std::string> splitBySpace(const std::string& str) {
     std::vector<std::string> tokens;
     std::istringstream iss(str);
@@ -37,12 +36,11 @@ void Grammar::loadFromFile(const std::string& filename) {
 
     while (std::getline(file, line)) {
 
-        // Skip empty lines and comments (lines starting with #)
+        // Skip empty lines and comments 
         line = trim(line);
         if (line.empty() || line[0] == '#') continue;
 
         // Split by "->"
-        // "Expr -> Expr + Term"  →  left="Expr"  right="Expr + Term"
         int arrowPos = line.find("->");
         if (arrowPos == std::string::npos) continue; // no arrow, skip line
 
@@ -50,8 +48,6 @@ void Grammar::loadFromFile(const std::string& filename) {
         std::string rhsStr = trim(line.substr(arrowPos + 2));
 
         // rhs might have multiple options separated by |
-        // "Expr -> Expr + Term | Term"
-        // split by |
         std::istringstream rhsStream(rhsStr);
         std::string option;
 
@@ -85,13 +81,11 @@ void Grammar::loadFromFile(const std::string& filename) {
 
     file.close();
 
-    // Now figure out which symbols are NonTerminals
     // Any symbol that appears on the LEFT side of -> is a NonTerminal
     for (int i = 0; i < rules.size(); i++) {
         nonTerminals.insert(rules[i].lhs);
     }
 
-    // Now figure out Terminals
     // Any symbol on the RIGHT side that is NOT a NonTerminal is a Terminal
     for (int i = 0; i < rules.size(); i++) {
         for (int j = 0; j < rules[i].rhs.size(); j++) {
@@ -106,8 +100,6 @@ void Grammar::loadFromFile(const std::string& filename) {
 Production augmented;
 augmented.lhs = startSymbol + "'";
 augmented.rhs.push_back(startSymbol);
-
-// insert at beginning
 rules.insert(rules.begin(), augmented);
 
 // update start symbol
@@ -149,8 +141,6 @@ void Grammar::printTerminalsAndNonTerminals() {
 
 // FIRST SETS
 
-
-// Get FIRST set of a single symbol
 std::set<std::string> Grammar::firstOfSymbol(const std::string& symbol) {
 
     std::set<std::string> result;
@@ -181,7 +171,6 @@ std::set<std::string> Grammar::firstOfSymbol(const std::string& symbol) {
                 if (*it != "eps") result.insert(*it);
             }
 
-            // if this symbol cannot be empty, stop
             if (firstOfSym.find("eps") == firstOfSym.end()) break;
 
             // if we reach the last symbol and it can be empty
@@ -211,8 +200,6 @@ void Grammar::computeFirstSets() {
         for (int i = 0; i < rules.size(); i++) {
             std::string lhs = rules[i].lhs;
             std::set<std::string> first = firstOfSymbol(lhs);
-
-            // check if anything new was added
             for (std::set<std::string>::iterator it = first.begin();
                  it != first.end(); it++) {
                 if (firstSets[lhs].find(*it) == firstSets[lhs].end()) {
@@ -226,7 +213,6 @@ void Grammar::computeFirstSets() {
 
 // =============================================
 // FOLLOW SETS
-// =============================================
 
 void Grammar::computeFollowSets() {
     // Initialize empty FOLLOW sets
