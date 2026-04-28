@@ -1,7 +1,0 @@
-E -> E + T
-E -> T
-T -> T * F
-T -> F
-F -> ( E )
-F -> id
-F -> num
